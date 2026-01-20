@@ -1,3 +1,37 @@
+import { db } from "./firebase"
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc
+} from "firebase/firestore"
+
+export const saveHabit = async (uid: string, habit: Habit) => {
+  const ref = doc(db, "users", uid, "habits", habit.id)
+  await setDoc(ref, habit)
+}
+
+export const getHabits = async (uid: string): Promise<Habit[]> => {
+  const ref = collection(db, "users", uid, "habits")
+  const snap = await getDocs(ref)
+
+  return snap.docs.map((doc) => doc.data() as Habit)
+}
+
+export const updateHabit = async (uid: string, habit: Habit) => {
+  const ref = doc(db, "users", uid, "habits", habit.id)
+  await updateDoc(ref, habit as any)
+}
+
+export const deleteHabit = async (uid: string, habitId: string) => {
+  const ref = doc(db, "users", uid, "habits", habitId)
+  await deleteDoc(ref)
+}
+
+
+
 export interface Habit {
   id: string
   name: string

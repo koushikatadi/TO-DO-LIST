@@ -1,47 +1,43 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { onAuthStateChanged } from "firebase/auth"
+import { auth } from "@/lib/firebase"
+import { saveHabit, getHabits, deleteHabit, updateHabit, Habit } from "@/lib/firestore"
+import { useRouter } from "next/navigation"
+
 import { Navigation } from "@/components/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useState, useEffect } from "react"
 import { Plus, Trash2, CheckCircle2, Circle } from "lucide-react"
 
-interface Habit {
-  id: string
-  name: string
-  streak: number
-  completedToday: boolean
-  createdDate: string
-}
-
-const getStoredHabits = (): Habit[] => {
-  try {
-    return JSON.parse(localStorage.getItem("habits") || "[]")
-  } catch {
-    return []
-  }
-}
-
 export default function HabitsPage() {
+  const router = useRouter()
+  const [user, setUser] = useState<any>(null)
   const [habits, setHabits] = useState<Habit[]>([])
   const [newHabitName, setNewHabitName] = useState("")
-  const [isLoading, setIsLoading] = useState(true)
 
+  /* 🔐 AUTH CHECK */
   useEffect(() => {
-    setHabits(getStoredHabits())
-    setIsLoading(false)
-  }, [])
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) router.replace("/login")
+      else setUser(u)
+    })
+    return () => unsub()
+  }, [router])
 
-  const saveHabits = (updated: Habit[]) => {
-    setHabits(updated)
-    localStorage.setItem("habits", JSON.stringify(updated))
-  }
+  /* 🔥 LOAD HABITS */
+  useEffect(() => {
+    if (!user) return
+    getHabits(user.uid).then(setHabits)
+  }, [user])
 
-  const addHabit = () => {
-    if (!newHabitName.trim()) return
+  /* ➕ ADD HABIT */
+  const addHabit = async () => {
+    if (!newHabitName.trim() || !user) return
 
-    const newHabit: Habit = {
+    const habit: Habit = {
       id: Date.now().toString(),
       name: newHabitName,
       streak: 0,
@@ -49,129 +45,71 @@ export default function HabitsPage() {
       createdDate: new Date().toISOString().split("T")[0],
     }
 
-    saveHabits([...habits, newHabit])
+    await saveHabit(user.uid, habit)
+    setHabits([...habits, habit])
     setNewHabitName("")
   }
 
-  const toggleHabitCompletion = (id: string) => {
-    const updated = habits.map((habit) => {
-      if (habit.id === id) {
-        const newCompleted = !habit.completedToday
-        return {
-          ...habit,
-          completedToday: newCompleted,
-          streak: newCompleted ? habit.streak + 1 : Math.max(0, habit.streak - 1),
-        }
-      }
-      return habit
-    })
-    saveHabits(updated)
+  /* ✅ TOGGLE */
+  const toggleHabit = async (habit: Habit) => {
+    if (!user) return
+
+    const updated = {
+      ...habit,
+      completedToday: !habit.completedToday,
+      streak: habit.completedToday ? habit.streak - 1 : habit.streak + 1,
+    }
+
+    await updateHabit(user.uid, updated)
+    setHabits(habits.map((h) => (h.id === habit.id ? updated : h)))
   }
 
-  const deleteHabit = (id: string) => {
-    saveHabits(habits.filter((h) => h.id !== id))
+  /* 🗑 DELETE */
+  const removeHabit = async (id: string) => {
+    if (!user) return
+    await deleteHabit(user.uid, id)
+    setHabits(habits.filter((h) => h.id !== id))
   }
-
-  if (isLoading) return null
-
-  const completedCount = habits.filter((h) => h.completedToday).length
 
   return (
-    <main className="min-h-screen pb-24 bg-background">
+    <main className="min-h-screen pb-24">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">Manage Habits</h1>
-          <p className="text-muted-foreground">
-            {completedCount} of {habits.length} completed today
-          </p>
-        </div>
 
-        {/* Add New Habit */}
-        <Card className="mb-6 border-primary/20 bg-primary/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Add New Habit</CardTitle>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Add Habit</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex gap-2">
-              <Input
-                placeholder="e.g., Morning Meditation, Exercise"
-                value={newHabitName}
-                onChange={(e) => setNewHabitName(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && addHabit()}
-                className="flex-1"
-              />
-              <Button onClick={addHabit} className="bg-primary hover:bg-primary/90">
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
+          <CardContent className="flex gap-2">
+            <Input
+              value={newHabitName}
+              onChange={(e) => setNewHabitName(e.target.value)}
+              placeholder="New habit"
+            />
+            <Button onClick={addHabit}>
+              <Plus />
+            </Button>
           </CardContent>
         </Card>
 
-        {/* Habits List */}
-        <div className="space-y-3">
-          {habits.length === 0 ? (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">No habits yet. Create your first one above.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            habits.map((habit) => (
-              <Card key={habit.id} className="hover:bg-card/80 transition-colors">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 flex-1">
-                      <button
-                        onClick={() => toggleHabitCompletion(habit.id)}
-                        className="flex-shrink-0 text-primary hover:text-primary/80 transition-colors"
-                      >
-                        {habit.completedToday ? (
-                          <CheckCircle2 className="w-6 h-6" />
-                        ) : (
-                          <Circle className="w-6 h-6 text-muted-foreground" />
-                        )}
-                      </button>
-                      <div className="flex-1">
-                        <p
-                          className={`font-medium ${habit.completedToday ? "text-muted-foreground line-through" : "text-foreground"}`}
-                        >
-                          {habit.name}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          Current streak: <span className="font-bold text-primary">{habit.streak}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => deleteHabit(habit.id)}
-                      className="flex-shrink-0 text-destructive hover:text-destructive/80 transition-colors p-2"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
+        {habits.map((habit) => (
+          <Card key={habit.id} className="mb-3">
+            <CardContent className="flex justify-between items-center p-4">
+              <button onClick={() => toggleHabit(habit)}>
+                {habit.completedToday ? <CheckCircle2 /> : <Circle />}
+              </button>
 
-        {/* Info Section */}
-        {habits.length > 0 && (
-          <Card className="mt-8 bg-secondary/5 border-secondary/20">
-            <CardHeader>
-              <CardTitle className="text-base">How This Works</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm text-foreground">
-              <p>✓ Check off habits each day to build your streak</p>
-              <p>✗ Unchecking a habit breaks your streak</p>
-              <p>📍 Streaks reset when you miss a day</p>
-              <p>💪 Consistency is more important than perfection</p>
+              <span className={habit.completedToday ? "line-through" : ""}>
+                {habit.name}
+              </span>
+
+              <button onClick={() => removeHabit(habit.id)}>
+                <Trash2 />
+              </button>
             </CardContent>
           </Card>
-        )}
-      </div>
+        ))}
 
+      </div>
       <Navigation />
     </main>
   )
