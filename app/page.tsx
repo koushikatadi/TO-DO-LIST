@@ -1,4 +1,10 @@
+
 "use client"
+
+
+import { onAuthStateChanged } from "firebase/auth"
+import { auth } from "../lib/firebase"
+import { useRouter } from "next/navigation"
 
 import { Navigation } from "@/components/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -53,6 +59,29 @@ const getDailyQuote = () => {
 }
 
 export default function DashboardPage() {
+ 
+
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      router.push("/login") // 🔒 redirect if not logged in
+    }
+  })
+  return () => unsubscribe()
+}, [])
+
+    const router = useRouter()
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.replace("/login")
+      }
+    })
+
+    return () => unsubscribe()
+  }, [router])
+
   const [habits, setHabits] = useState<Habit[]>([])
   const [todaysFocus, setTodaysFocus] = useState("")
   const [motivationalNote, setMotivationalNote] = useState("")
@@ -112,7 +141,10 @@ export default function DashboardPage() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">{getGreeting()}, Koushika</h1>
+          <h1 className="text-3xl font-bold">
+  {getGreeting()}, {auth.currentUser?.displayName || "User"}
+</h1>
+
           <div className="flex justify-between items-center">
             <p className="text-muted-foreground">
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
