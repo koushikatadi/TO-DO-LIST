@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react"
 import { onAuthStateChanged } from "firebase/auth"
 import { auth } from "@/lib/firebase"
-import { saveHabit, getHabits, deleteHabit, updateHabit, Habit } from "@/lib/firestore"
+import {
+  saveHabit,
+  getHabits,
+  deleteHabit,
+  updateHabit,
+  Habit,
+} from "@/lib/firestore"
 import { useRouter } from "next/navigation"
 
 import { Navigation } from "@/components/navigation"
@@ -12,17 +18,48 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Plus, Trash2, CheckCircle2, Circle } from "lucide-react"
 
+import confetti from "canvas-confetti"
+
+/* 🔥 FIRE LEVELS (1–30 DAYS) */
+const getFireLevel = (streak: number) => {
+  if (streak >= 15) return "🔥🔥🔥"
+  if (streak >= 7) return "🔥🔥"
+  if (streak >= 1) return "🔥"
+  return ""
+}
+
+/* 🏆 BADGES (61+ DAYS) */
+const getBadge = (streak: number) => {
+  if (streak >= 180) return "🥇 Elite"
+  if (streak >= 90) return "🥈 Disciplined"
+  if (streak >= 61) return "🥉 Committed"
+  return null
+}
+
+/* 🎉 CONFETTI */
+const triggerConfetti = () => {
+  confetti({
+    particleCount: 120,
+    spread: 70,
+    origin: { y: 0.6 },
+  })
+}
+
 export default function HabitsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [habits, setHabits] = useState<Habit[]>([])
   const [newHabitName, setNewHabitName] = useState("")
+  const [loading, setLoading] = useState(true)
 
   /* 🔐 AUTH CHECK */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) router.replace("/login")
-      else setUser(u)
+      else {
+        setUser(u)
+        setLoading(false)
+      }
     })
     return () => unsub()
   }, [router])
@@ -50,14 +87,23 @@ export default function HabitsPage() {
     setNewHabitName("")
   }
 
-  /* ✅ TOGGLE */
+  /* ✅ TOGGLE HABIT */
   const toggleHabit = async (habit: Habit) => {
     if (!user) return
+
+    const newStreak = habit.completedToday
+      ? habit.streak - 1
+      : habit.streak + 1
 
     const updated = {
       ...habit,
       completedToday: !habit.completedToday,
-      streak: habit.completedToday ? habit.streak - 1 : habit.streak + 1,
+      streak: newStreak,
+    }
+
+    /* 🎉 CONFETTI PHASE (31–60 DAYS) */
+    if ([31, 45, 60].includes(newStreak)) {
+      triggerConfetti()
     }
 
     await updateHabit(user.uid, updated)
@@ -71,136 +117,106 @@ export default function HabitsPage() {
     setHabits(habits.filter((h) => h.id !== id))
   }
 
+  if (loading) return null
+
   return (
-  <main className="min-h-screen pb-24 bg-background">
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <main className="min-h-screen pb-24 bg-background">
+      <div className="max-w-2xl mx-auto px-4 py-8">
 
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-1">Manage Habits</h1>
-        <p className="text-muted-foreground">
-          Build consistency one habit at a time
-        </p>
-      </div>
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-1">Manage Habits</h1>
+          <p className="text-muted-foreground">
+            Build consistency one habit at a time
+          </p>
+        </div>
 
-      {/* Add Habit */}
-      <Card className="mb-6 border-primary/20 bg-primary/5">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Add New Habit</CardTitle>
-        </CardHeader>
-        <CardContent className="flex gap-2">
-          <Input
-            value={newHabitName}
-            onChange={(e) => setNewHabitName(e.target.value)}
-            placeholder="e.g. Morning walk, Reading, Meditation"
-            className="flex-1"
-            onKeyDown={(e) => e.key === "Enter" && addHabit()}
-          />
-          <Button
-            onClick={addHabit}
-            className="bg-primary hover:bg-primary/90"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-        </CardContent>
-      </Card>
+        {/* Add Habit */}
+        <Card className="mb-6 border-primary/20 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Add New Habit</CardTitle>
+          </CardHeader>
+          <CardContent className="flex gap-2">
+            <Input
+              value={newHabitName}
+              onChange={(e) => setNewHabitName(e.target.value)}
+              placeholder="e.g. Morning walk, Reading"
+              className="flex-1"
+              onKeyDown={(e) => e.key === "Enter" && addHabit()}
+            />
+            <Button onClick={addHabit}>
+              <Plus className="w-4 h-4" />
+            </Button>
+          </CardContent>
+        </Card>
 
-      {/* Habits List */}
-      <div className="space-y-3">
-        {habits.length === 0 ? (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">
+        {/* Habits List */}
+        <div className="space-y-3">
+          {habits.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">
                 No habits yet. Add your first habit above 👆
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          habits.map((habit) => (
-            <Card
-              key={habit.id}
-              className="transition-all hover:shadow-md hover:bg-card/80"
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between gap-4">
+              </CardContent>
+            </Card>
+          ) : (
+            habits.map((habit) => (
+              <Card key={habit.id} className="hover:shadow-md transition">
+                <CardContent className="p-4 flex justify-between items-center gap-4">
 
-                  {/* Left Section */}
                   <div className="flex items-center gap-3 flex-1">
-                    <button
-                      onClick={() => toggleHabit(habit)}
-                      className="text-primary hover:text-primary/80 transition-colors"
-                    >
+                    <button onClick={() => toggleHabit(habit)}>
                       {habit.completedToday ? (
-                        <CheckCircle2 className="w-6 h-6" />
+                        <CheckCircle2 className="text-primary" />
                       ) : (
-                        <Circle className="w-6 h-6 text-muted-foreground" />
+                        <Circle className="text-muted-foreground" />
                       )}
                     </button>
 
-                    <div className="flex-1">
+                    <div>
                       <p
                         className={`font-medium ${
                           habit.completedToday
                             ? "line-through text-muted-foreground"
-                            : "text-foreground"
+                            : ""
                         }`}
                       >
                         {habit.name}
                       </p>
 
-                      {/* 🔥 STREAK WITH FIRE LEVELS (1–30 DAYS) */}
+                      {/* 🔥 FIRE (1–30) */}
                       <p className="text-sm text-muted-foreground flex items-center gap-1">
                         Streak:
                         <span className="font-bold text-primary flex items-center gap-1">
                           {habit.streak}
-
-                          {habit.streak > 0 && habit.streak <= 30 && (
-                            <span>
-                              {habit.streak >= 15
-                                ? "🔥🔥🔥"
-                                : habit.streak >= 7
-                                ? "🔥🔥"
-                                : "🔥"}
-                            </span>
-                          )}
+                          {habit.streak > 0 &&
+                            habit.streak <= 30 &&
+                            getFireLevel(habit.streak)}
                         </span>
                       </p>
+
+                      {/* 🏆 BADGE (61+) */}
+                      {habit.streak >= 61 && (
+                        <p className="text-xs font-semibold text-accent mt-1">
+                          {getBadge(habit.streak)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Delete */}
                   <button
                     onClick={() => removeHabit(habit.id)}
-                    className="text-destructive hover:text-destructive/80 transition-colors"
+                    className="text-destructive hover:text-destructive/80"
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
 
-      {/* Info Card */}
-      {habits.length > 0 && (
-        <Card className="mt-8 bg-secondary/5 border-secondary/20">
-          <CardHeader>
-            <CardTitle className="text-base">How it works</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>✔ Complete habits daily to build streaks</p>
-            <p>🔥 Fire rewards for first 30 days</p>
-            <p>🎉 Bigger rewards unlock with consistency</p>
-          </CardContent>
-        </Card>
-      )}
-
-    </div>
-
-    <Navigation />
-  </main>
-)
-
-
+      <Navigation />
+    </main>
+  )
 }
